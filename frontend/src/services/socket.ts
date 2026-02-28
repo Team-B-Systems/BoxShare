@@ -2,13 +2,16 @@ import { io, Socket } from 'socket.io-client';
 
 /**
  * Determine the backend URL dynamically.
- * In a LAN environment, the backend runs on the same host but on port 3000.
- * This ensures the frontend can connect to the backend regardless of
- * which machine's IP is used to access the app.
+ * Resolves to the correct wss:// WebSocket connection URL to avoid mixed-content errors.
  */
 const getBackendUrl = (): string => {
-    const hostname = '192.168.1.204'
-    return `http://${hostname}:3000`;
+    // Use configurable environment variable if available
+    const envWsUrl = import.meta.env.VITE_WS_URL;
+    if (envWsUrl) return envWsUrl;
+
+    // Use current window location to support LAN IPs directly
+    const hostname = window.location.hostname || '192.168.1.100';
+    return `https://${hostname}:3000`; // Socket.io will automatically upgrade https to secure wss://
 };
 
 /** Backend base URL for REST API calls */
@@ -26,6 +29,9 @@ export const getSocket = (): Socket => {
         socket = io(API_URL, {
             transports: ['websocket', 'polling'],
             autoConnect: true,
+            // Force fully secure connection and ignore self-signed cert blocks on LAN
+            secure: true,
+            rejectUnauthorized: false, // Node.js environments only, in browser we rely on the user accepting the cert
         });
 
         socket.on('connect', () => {

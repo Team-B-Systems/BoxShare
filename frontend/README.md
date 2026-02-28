@@ -71,3 +71,18 @@ export default defineConfig([
   },
 ])
 ```
+
+## SSL Certificates (LAN WebRTC Support)
+
+In order for WebRTC Screen Sharing (`getDisplayMedia`) to work properly over a local network (e.g., when accessing your Vite project via `https://192.168.x.x:5173`), the connection must be strictly secure (HTTPS/WSS context). This requires self-signed certificates for testing.
+
+**How to generate the certificates:**
+Create a `certs/` directory in the root of the `frontend` folder and generate the self-signed key/cert pair with OpenSSL:
+
+```bash
+mkdir -p certs
+openssl req -nodes -new -x509 -keyout certs/key.pem -out certs/cert.pem -days 365 -subj "/C=US/ST=State/L=City/O=BoxShare/CN=192.168.1.100"
+```
+*(You can also just copy the `certs/` folder from the backend directly).*
+
+Run the app via `npm run dev` and your Vite server will securely serve HTTPS over your local IP. Because the certificate is self-signed, you will need to click "Advanced > Proceed to 192.168... (unsafe)" upon your first access in the browser.

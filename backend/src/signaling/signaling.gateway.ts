@@ -24,7 +24,8 @@ import { SignalingService } from './signaling.service';
  */
 @WebSocketGateway({
     cors: {
-        origin: '*', // Allow all origins (LAN environment)
+        origin: true, // Allow all origins for secure context
+        credentials: true, // Required for WSS
     },
 })
 export class SignalingGateway implements OnGatewayDisconnect {

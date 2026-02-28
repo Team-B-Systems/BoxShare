@@ -30,7 +30,7 @@ export default function SessionCard({
       "
         >
             {/* Subtle top accent line */}
-            <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-border-hover to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <div className="absolute top-0 left-0 right-0 h-px bg-linear-to-r from-transparent via-border-hover to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
             <div className="flex items-start justify-between gap-4">
                 {/* Session info */}

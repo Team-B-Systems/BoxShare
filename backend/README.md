@@ -96,3 +96,18 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
+## SSL Certificates (LAN HTTPS / WSS Support)
+
+To allow the browser to use WebRTC `getDisplayMedia` API over LAN (via IP instead of localhost), you need a secure context (HTTPS/WSS). This project relies on self-signed certificates for local network testing.
+
+**How to generate the certificates:**
+Create the `certs/` directory and generate a self-signed key/cert pair using OpenSSL inside the root of the `backend` folder:
+
+```bash
+mkdir -p certs
+openssl req -nodes -new -x509 -keyout certs/key.pem -out certs/cert.pem -days 365 -subj "/C=US/ST=State/L=City/O=BoxShare/CN=192.168.1.100"
+```
+*(Replace `192.168.1.100` with your actual LAN IP if desired, though generic values usually suffice since it's self-signed).*
+
+When accessing the API/WSS for the first time, you must manually go to `https://192.168.x.x:3000` on your browser and accept the security warning ("Insecure Connection") so WebSocket connections don't get blocked.
