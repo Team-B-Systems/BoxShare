@@ -1,0 +1,38 @@
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: boxshare_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - boxshare-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: boxshare_frontend
+    networks:
+      - boxshare-network
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: boxshare_backend
+    networks:
+      - boxshare-network
+    restart: unless-stopped
+
+networks:
+  boxshare-network:
+    driver: bridge

@@ -4,6 +4,13 @@ import tailwindcss from '@tailwindcss/vite';
 import fs from 'fs';
 import path from 'path';
 
+const certPath = path.resolve(__dirname, 'certs/cert.pem');
+const keyPath = path.resolve(__dirname, 'certs/key.pem');
+
+const httpsOptions = fs.existsSync(certPath) && fs.existsSync(keyPath)
+  ? { cert: fs.readFileSync(certPath), key: fs.readFileSync(keyPath) }
+  : false;
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -12,10 +19,6 @@ export default defineConfig({
     host: true,
     port: 5173,
     open: true,
-    // Enable HTTPS in frontend using the generated certificates
-    https: {
-      cert: fs.readFileSync(path.resolve(__dirname, 'certs/cert.pem')),
-      key: fs.readFileSync(path.resolve(__dirname, 'certs/key.pem')),
-    },
+    ...(httpsOptions && { https: httpsOptions }),
   },
 });

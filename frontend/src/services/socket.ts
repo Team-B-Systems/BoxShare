@@ -9,9 +9,22 @@ const getBackendUrl = (): string => {
     const envWsUrl = import.meta.env.VITE_WS_URL;
     if (envWsUrl) return envWsUrl;
 
-    // Use current window location to support LAN IPs directly
-    const hostname = window.location.hostname || '192.168.1.100';
-    return `https://${hostname}:3000`; // Socket.io will automatically upgrade https to secure wss://
+    // Support Nginx reverse proxy configuration and local development
+    if (typeof window !== 'undefined') {
+        const { hostname, port, protocol } = window.location;
+        const targetProtocol = protocol === 'https:' ? 'https:' : 'http:';
+
+        // If we access the site without a dev port (e.g. 80/443 through an Nginx proxy),
+        // we connect to the same origin because the proxy forwards /socket.io/ to backend.
+        if (port === '' || port === '80' || port === '443') {
+            return `${targetProtocol}//${hostname}`;
+        }
+
+        // Local dev (e.g. port 5173), direct fallback to backend on 3000
+        return `${targetProtocol}//${hostname}:3000`;
+    }
+
+    return 'https://192.168.1.100:3000';
 };
 
 /** Backend base URL for REST API calls */

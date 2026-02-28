@@ -4,14 +4,19 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 async function bootstrap() {
-  // Load SSL certificates for secure HTTPS/WSS context
-  const httpsOptions = {
-    key: fs.readFileSync(path.join(process.cwd(), 'certs', 'key.pem')),
-    cert: fs.readFileSync(path.join(process.cwd(), 'certs', 'cert.pem')),
-  };
+  const certPath = path.join(process.cwd(), 'certs', 'cert.pem');
+  const keyPath = path.join(process.cwd(), 'certs', 'key.pem');
 
-  // Enable HTTPS in NestJS
-  const app = await NestFactory.create(AppModule, { httpsOptions });
+  let httpsOptions;
+  if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
+    httpsOptions = {
+      key: fs.readFileSync(keyPath),
+      cert: fs.readFileSync(certPath),
+    };
+  }
+
+  // Enable HTTPS in NestJS only if certificates are available
+  const app = await NestFactory.create(AppModule, httpsOptions ? { httpsOptions } : undefined);
 
   // Enable CORS for the frontend running on a different port
   app.enableCors({
@@ -19,9 +24,9 @@ async function bootstrap() {
     credentials: true, // Required for secure context/WSS
   });
 
-  // Listen on all network interfaces (0.0.0.0) for LAN access
+  // Listen on all network interfaces (0.0.0.0) for LAN access on port 3000
   await app.listen(3000, '0.0.0.0');
-  console.log(`🚀 BoxShare backend running on https://0.0.0.0:3000`);
+  console.log(`🚀 BoxShare backend running on ${httpsOptions ? 'https' : 'http'}://0.0.0.0:3000`);
   console.log(`📡 WebSocket signaling server is active`);
 }
 
