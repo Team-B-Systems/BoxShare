@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { getSocket, disconnectSocket } from '../services/socket';
-import { createHostConnection } from '../services/webrtc';
+import { disconnectSocket } from '../services/socket';
+import { startSfuHost, cleanupSfu } from '../services/webrtc';
 
 interface ShareScreenProps {
     /** The MediaStream captured from getDisplayMedia — passed from App.tsx */
@@ -11,16 +11,13 @@ interface ShareScreenProps {
 }
 
 /**
- * ShareScreen component.
- *
- * Receives an already-captured MediaStream and session info from App.tsx.
- * This ensures session creation only happens once per user click.
+ * ShareScreen component using SFU architecture.
  */
 export default function ShareScreen({
     stream,
     sessionId,
     pin,
-    onStop
+    onStop,
 }: ShareScreenProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [machineName] = useState<string>(
@@ -31,15 +28,14 @@ export default function ShareScreen({
         'initializing',
     );
     const [errorMsg, setErrorMsg] = useState('');
-    const [viewerIds, setViewerIds] = useState<Set<string>>(new Set());
-    const cleanupRef = useRef<(() => void) | null>(null);
+    const [viewerCount, setViewerCount] = useState(0);
 
     /** Clean up all resources and stop sharing */
     const handleStop = useCallback(() => {
         // Stop all media tracks
         stream.getTracks().forEach((track) => track.stop());
         // Close WebRTC connections
-        cleanupRef.current?.();
+        cleanupSfu();
         // Disconnect socket
         disconnectSocket();
         // Navigate back to home
@@ -47,7 +43,6 @@ export default function ShareScreen({
     }, [stream, onStop]);
 
     useEffect(() => {
-        const socket = getSocket();
 
         // Show the stream preview immediately
         if (videoRef.current) {
@@ -59,38 +54,49 @@ export default function ShareScreen({
             handleStop();
         };
 
-        // Callback para atualizar IDs únicos de viewers
-        const addViewer = (data: { viewerId: string }) => {
-            setViewerIds((prev) => new Set(prev).add(data.viewerId));
+        // Set up Mediasoup SFU host
+        const setupSFU = async () => {
+            try {
+                await startSfuHost(sessionId, pin, stream, () => {
+                    console.warn('⚠️ [Host] Media transport disconnected');
+                    // Don't call handleStop() here as it kills the socket. 
+                    // Let the user decide or the socket.io disconnect handle it.
+                });
+
+                setStatus('sharing');
+            } catch (err: any) {
+                console.error('Error setting up Mediasoup SFU:', err);
+                setErrorMsg(err.message || 'Failed to initialize SFU connection');
+                setStatus('error');
+            }
         };
 
-        // Set up WebRTC host connection
-        try {
-            const cleanup = createHostConnection(
-                sessionId,
-                stream,
-                () => {
-                    /* Conexão estabelecida */
-                },
-            );
-            cleanupRef.current = cleanup;
+        setupSFU();
 
-            // Listen for viewer join events to update unique count
-            socket.on('viewer-joined', addViewer);
+        // Polling or events for viewer count (sessions API still works)
+        const updateViewerCount = async () => {
+            try {
+                const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/sessions`);
+                if (res.ok) {
+                    const sessions = await res.json();
+                    const current = sessions.find((s: any) => s.sessionId === sessionId);
+                    if (current) {
+                        setViewerCount(current.viewers.length);
+                    }
+                }
+            } catch (e) {
+                // ignore
+            }
+        };
 
-            setStatus('sharing');
-        } catch (err: any) {
-            console.error('Error setting up WebRTC:', err);
-            setErrorMsg(err.message || 'Failed to initialize P2P connection');
-            setStatus('error');
-        }
+        const interval = setInterval(updateViewerCount, 5000);
 
         return () => {
             console.log('Cleaning up ShareScreen effect');
-            socket.off('viewer-joined', addViewer);
-            cleanupRef.current?.();
+            clearInterval(interval);
+            cleanupSfu();
         };
-    }, [sessionId, stream, handleStop]);
+    }, [sessionId, stream, handleStop, pin]);
 
     if (status === 'error') {
         return (
@@ -139,7 +145,7 @@ export default function ShareScreen({
                     <div className="flex items-center gap-3">
                         <div className="w-2 h-2 rounded-full bg-success animate-pulse-subtle" />
                         <span className="text-text-primary text-sm font-medium">
-                            Sharing Active
+                            SFU Sharing Active
                         </span>
                         <span className="text-text-muted text-xs">·</span>
                         <span className="text-text-muted text-xs">{machineName}</span>
@@ -185,7 +191,7 @@ export default function ShareScreen({
                         ))}
                     </div>
                     <p className="text-text-muted text-xs mt-3">
-                        {viewerIds.size} viewer{viewerIds.size !== 1 ? 's' : ''} connected
+                        {viewerCount} viewer{viewerCount !== 1 ? 's' : ''} connected (SFU)
                     </p>
                 </div>
 
@@ -194,7 +200,7 @@ export default function ShareScreen({
                     <div className="absolute top-3 left-3 z-10 flex items-center gap-2 bg-surface/80 backdrop-blur-sm rounded-md px-2.5 py-1 border border-border">
                         <div className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse-subtle" />
                         <span className="text-[10px] text-text-muted uppercase tracking-wider">
-                            Live Preview
+                            Live Preview (SFU)
                         </span>
                     </div>
                     <video

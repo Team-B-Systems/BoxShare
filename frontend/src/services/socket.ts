@@ -2,71 +2,57 @@ import { io, Socket } from 'socket.io-client';
 
 /**
  * Determine the backend URL dynamically.
- * Resolves to the correct wss:// WebSocket connection URL to avoid mixed-content errors.
+ * Always returns https/wss URLs as HTTPS is now required for screen sharing.
  */
 const getBackendUrl = (): string => {
-    // Use configurable environment variable if available
     const envWsUrl = import.meta.env.VITE_WS_URL;
     if (envWsUrl) return envWsUrl;
 
-    // Support Nginx reverse proxy configuration and local development
     if (typeof window !== 'undefined') {
-        const { hostname, port, protocol } = window.location;
-        const targetProtocol = protocol === 'https:' ? 'https:' : 'http:';
+        const { hostname, port } = window.location;
 
-        // If we access the site without a dev port (e.g. 80/443 through an Nginx proxy),
-        // we connect to the same origin because the proxy forwards /socket.io/ to backend.
+        console.log("HOSTNAME: ", hostname);
+        console.log("PORT: ", port);
+
+        // Always force https for backend communication
+        const targetProtocol = 'https:';
+
+        // Nginx proxy case
         if (port === '' || port === '80' || port === '443') {
             return `${targetProtocol}//${hostname}`;
         }
 
-        // Local dev (e.g. port 5173), direct fallback to backend on 3000
+        // Local dev fallback 
         return `${targetProtocol}//${hostname}:3000`;
     }
 
-    return 'https://192.168.1.100:3000';
+    return 'https://localhost:3000';
 };
 
-/** Backend base URL for REST API calls */
 export const API_URL = getBackendUrl();
-
-/** Singleton Socket.IO client instance */
 let socket: Socket | null = null;
 
-/**
- * Get or create the Socket.IO connection to the backend.
- * Reuses the same connection across the entire app.
- */
 export const getSocket = (): Socket => {
     if (!socket) {
         socket = io(API_URL, {
-            transports: ['websocket', 'polling'],
+            transports: ['websocket'], // Use WebSocket primarily
             autoConnect: true,
-            // Force fully secure connection and ignore self-signed cert blocks on LAN
             secure: true,
-            rejectUnauthorized: false, // Node.js environments only, in browser we rely on the user accepting the cert
+            rejectUnauthorized: false, // Allow self-signed certs in browser (user must accept warning)
         });
 
         socket.on('connect', () => {
-            console.log('🔗 Connected to signaling server:', socket?.id);
-        });
-
-        socket.on('disconnect', (reason) => {
-            console.log('🔌 Disconnected from signaling server:', reason);
+            console.log('🔗 Connected to SECURE signaling server:', socket?.id);
         });
 
         socket.on('connect_error', (error) => {
-            console.error('❌ Connection error:', error.message);
+            console.error('❌ Secure Connection error:', error.message);
         });
     }
 
     return socket;
 };
 
-/**
- * Disconnect and destroy the socket instance.
- * Useful when navigating away from sharing/viewing.
- */
 export const disconnectSocket = (): void => {
     if (socket) {
         socket.disconnect();

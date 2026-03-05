@@ -15,8 +15,8 @@ const httpsOptions = fs.existsSync(certPath) && fs.existsSync(keyPath)
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    // Listen on all interfaces for LAN access
-    host: true,
+    // Force IPv4 for better compatibility with Windows/WSL mirrored mode
+    host: '0.0.0.0',
     port: 5173,
     open: true,
     ...(httpsOptions && { https: httpsOptions }),

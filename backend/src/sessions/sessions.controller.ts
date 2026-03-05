@@ -49,7 +49,7 @@ export class SessionsController {
     /**
      * POST /sessions/:id/validate
      * Validate the PIN for a given session.
-     * Returns the stored WebRTC offer if the PIN is correct.
+     * Returns session info if the PIN is correct.
      */
     @Post(':id/validate')
     validatePin(
@@ -69,7 +69,7 @@ export class SessionsController {
         return {
             valid: true,
             sessionId: session!.sessionId,
-            offer: session!.offer,
+            pin: session!.pin,
         };
     }
 }

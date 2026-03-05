@@ -3,14 +3,14 @@ import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Represents a single screen-sharing session stored in memory.
+ * With the SFU architecture, sessions track identity and PIN only.
+ * All WebRTC state is managed by the MediasoupModule (rooms).
  */
 export interface Session {
     sessionId: string;
     pin: string;
     machineName: string;
-    offer: RTCSessionDescriptionInit | null;
     viewers: string[];
-    hostSocketId: string | null;
 }
 
 /**
@@ -36,9 +36,7 @@ export class SessionsService {
             sessionId,
             pin,
             machineName,
-            offer: null,
             viewers: [],
-            hostSocketId: null,
         };
 
         this.sessions.set(sessionId, session);
@@ -47,10 +45,10 @@ export class SessionsService {
     }
 
     /**
-     * Return all active sessions (without exposing the offer or host socket).
+     * Return all active sessions.
      * Used by the home screen to list available streams.
      */
-    getAllSessions(): Omit<Session, 'offer' | 'hostSocketId'>[] {
+    getAllSessions(): Pick<Session, 'sessionId' | 'pin' | 'machineName' | 'viewers'>[] {
         return Array.from(this.sessions.values()).map(
             ({ sessionId, pin, machineName, viewers }) => ({
                 sessionId,
@@ -76,29 +74,6 @@ export class SessionsService {
         const session = this.sessions.get(sessionId);
         if (!session) return false;
         return session.pin === pin;
-    }
-
-    /**
-     * Store the WebRTC offer from the host for a given session.
-     */
-    storeOffer(
-        sessionId: string,
-        offer: RTCSessionDescriptionInit,
-    ): boolean {
-        const session = this.sessions.get(sessionId);
-        if (!session) return false;
-        session.offer = offer;
-        return true;
-    }
-
-    /**
-     * Register the host's WebSocket ID so we can forward messages to them.
-     */
-    setHostSocket(sessionId: string, socketId: string): boolean {
-        const session = this.sessions.get(sessionId);
-        if (!session) return false;
-        session.hostSocketId = socketId;
-        return true;
     }
 
     /**
@@ -132,20 +107,11 @@ export class SessionsService {
     }
 
     /**
-     * Find a session by its host socket ID (useful on disconnect).
+     * Find a session by its PIN.
      */
-    findSessionByHostSocket(socketId: string): Session | undefined {
+    findSessionByPin(pin: string): Session | undefined {
         return Array.from(this.sessions.values()).find(
-            (s) => s.hostSocketId === socketId,
-        );
-    }
-
-    /**
-     * Find all sessions where a given socket is a viewer.
-     */
-    findSessionsByViewer(socketId: string): Session[] {
-        return Array.from(this.sessions.values()).filter((s) =>
-            s.viewers.includes(socketId),
+            (s) => s.pin === pin,
         );
     }
 }

@@ -1,266 +1,259 @@
+import { Device } from 'mediasoup-client';
+import type {
+    Transport,
+    Producer,
+    Consumer,
+    RtpCapabilities,
+} from 'mediasoup-client/types';
 import { getSocket } from './socket';
-import type { Socket } from 'socket.io-client';
 
 /**
- * Configuration for WebRTC peer connections.
- * In a LAN environment we typically don't need STUN/TURN servers,
- * but we include Google's public STUN server as a fallback.
+ * WebRTC Service using mediasoup SFU.
+ * Robust against React StrictMode and concurrent mounting.
  */
-const RTC_CONFIG: RTCConfiguration = {
-    iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-    ],
+
+// Shared Device state
+let device: Device | null = null;
+let loadDevicePromise: Promise<void> | null = null;
+
+// Initialization Locks (survive between renders)
+const hostInitPromises = new Map<string, Promise<void>>();
+const joinInitPromises = new Map<string, Promise<void>>();
+
+// Active resources
+const activeSendTransports = new Map<string, Transport>();
+const activeRecvTransports = new Map<string, Transport>();
+const producers = new Map<string, Producer>();
+const consumers = new Map<string, Consumer>();
+const consumedProducerIds = new Set<string>();
+
+/**
+ * Initialize the mediasoup Device.
+ */
+const initDevice = async (rtpCapabilities: RtpCapabilities) => {
+    if (loadDevicePromise) return loadDevicePromise;
+    if (device?.loaded) return;
+
+    loadDevicePromise = (async () => {
+        try {
+            if (!device) device = new Device();
+            if (!device.loaded) {
+                await device.load({ routerRtpCapabilities: rtpCapabilities });
+                console.log('✅ [Mediasoup] Device loaded');
+            }
+        } catch (error) {
+            console.error('❌ [Mediasoup] Failed to load device:', error);
+            loadDevicePromise = null;
+            throw error;
+        }
+    })();
+
+    return loadDevicePromise;
 };
 
 /**
- * Create a WebRTC host connection.
- *
- * Correct flow (per-viewer):
- * 1. Host registers socket with the backend
- * 2. When a viewer joins, the backend notifies the host via "viewer-joined"
- * 3. Host creates a dedicated RTCPeerConnection for that viewer
- * 4. Host creates an offer and sends it targeted to that specific viewer
- * 5. Viewer creates an answer and sends it back
- * 6. ICE candidates are exchanged
- *
- * There is NO initial offer. Offers are only created on-demand per viewer.
+ * HOSTER: Start sharing screen.
  */
-export const createHostConnection = (
-    sessionId: string,
+export const startSfuHost = async (
+    _sessionId: string,
+    pin: string,
     stream: MediaStream,
-    onViewerConnected?: () => void,
-): (() => void) => {
-    const socket: Socket = getSocket();
-    const peerConnections = new Map<string, RTCPeerConnection>();
+    onDisconnect?: () => void
+): Promise<void> => {
+    // If already sharing, ignore
+    if (activeSendTransports.has(pin)) return;
 
-    const register = () => {
-        console.log(`🏠 [Host] Registrando host para sessão: ${sessionId}`);
-        socket.emit('register-host', { sessionId });
-    };
+    // If already starting, wait for that promise
+    if (hostInitPromises.has(pin)) return hostInitPromises.get(pin);
 
-    if (socket.connected) {
-        register();
-    } else {
-        socket.once('connect', register);
-    }
-
-    const handleViewerJoined = async (data: {
-        viewerId: string;
-        sessionId: string;
-    }) => {
-        if (data.sessionId !== sessionId) return;
-
-        console.log(`👀 [Host] Novo viewer detectado: ${data.viewerId}`);
-        const pc = new RTCPeerConnection(RTC_CONFIG);
-        peerConnections.set(data.viewerId, pc);
-
-        stream.getTracks().forEach((track) => {
-            pc.addTrack(track, stream);
-        });
-
-        pc.onicecandidate = (event) => {
-            if (event.candidate) {
-                console.log(`📤 [Host] Enviando candidato ICE para viewer: ${data.viewerId}`);
-                socket.emit('ice-candidate', {
-                    sessionId,
-                    candidate: event.candidate.toJSON(),
-                    targetId: data.viewerId,
-                });
-            }
-        };
-
-        pc.oniceconnectionstatechange = () => {
-            console.log(`🧊 [Host] Estado ICE (viewer ${data.viewerId}):`, pc.iceConnectionState);
-            if (['connected', 'completed'].includes(pc.iceConnectionState)) {
-                onViewerConnected?.();
-            }
-        };
+    const initPromise = (async () => {
+        const socket = getSocket();
+        console.log(`🚀 [Host] Initiating SFU for PIN ${pin}...`);
 
         try {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            console.log(`📤 [Host] Enviando oferta para viewer: ${data.viewerId}`);
-            socket.emit('offer', {
-                sessionId,
-                offer: pc.localDescription,
-                targetViewerId: data.viewerId,
+            const { rtpCapabilities, error: createError } = await socket.emitWithAck('create-room', { pin });
+            if (createError) throw new Error(createError);
+
+            await initDevice(rtpCapabilities);
+
+            const { params, error: transportError } = await socket.emitWithAck('create-transport', { pin });
+            if (transportError) throw new Error(transportError);
+
+            const transport = device!.createSendTransport(params);
+            activeSendTransports.set(pin, transport);
+
+            transport.on('connect', async ({ dtlsParameters }: { dtlsParameters: any }, callback: () => void, errback: (error: Error) => void) => {
+                try {
+                    await socket.emitWithAck('connect-transport', { pin, transportId: transport.id, dtlsParameters });
+                    callback();
+                } catch (error: any) {
+                    errback(error);
+                }
             });
+
+            transport.on('produce', async ({ kind, rtpParameters }: { kind: any, rtpParameters: any }, callback: ({ id }: { id: string }) => void, errback: (error: Error) => void) => {
+                try {
+                    const { producerId, error: produceError } = await socket.emitWithAck('produce', {
+                        pin,
+                        transportId: transport.id,
+                        kind,
+                        rtpParameters,
+                    });
+                    if (produceError) throw new Error(produceError);
+                    callback({ id: producerId });
+                } catch (error: any) {
+                    errback(error);
+                }
+            });
+
+            transport.on('connectionstatechange', (state) => {
+                console.log(`🔗 [Host] Transport state: ${state}`);
+                if (state === 'failed' || state === 'disconnected') {
+                    console.error('❌ [Host] ICE Connection failed. This usually means UDP ports are blocked or IP is unreachable.');
+                    onDisconnect?.();
+                }
+            });
+
+            console.log('📡 [Host] Send Transport created with ICE candidates:', params.iceCandidates);
+
+            const videoTrack = stream.getVideoTracks()[0];
+            const producer = await transport.produce({ track: videoTrack });
+            producers.set(producer.id, producer);
+
+            console.log('🎬 [Host] Video production started:', producer.id);
         } catch (error) {
-            console.error(`❌ [Host] Erro ao criar oferta para viewer ${data.viewerId}:`, error);
+            console.error('❌ [Host] SFU Start Failed:', error);
+            activeSendTransports.delete(pin);
+            throw error;
+        } finally {
+            hostInitPromises.delete(pin);
         }
-    };
+    })();
 
-    const handleAnswer = async (data: {
-        answer: RTCSessionDescriptionInit;
-        viewerId: string;
-    }) => {
-        const pc = peerConnections.get(data.viewerId);
-        if (pc) {
-            try {
-                await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-                console.log(`✅ [Host] Resposta (answer) aceita para viewer: ${data.viewerId}`);
-            } catch (error) {
-                console.error(`❌ [Host] Erro ao definir descrição remota para viewer ${data.viewerId}:`, error);
-            }
-        }
-    };
-
-    const handleIceCandidate = async (data: {
-        candidate: RTCIceCandidateInit;
-        senderId: string;
-    }) => {
-        const pc = peerConnections.get(data.senderId);
-        if (pc) {
-            try {
-                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-                console.log(`🧊 [Host] Candidato ICE recebido de viewer: ${data.senderId}`);
-            } catch (error) {
-                console.error(`❌ [Host] Erro ao adicionar candidato ICE do viewer ${data.senderId}:`, error);
-            }
-        }
-    };
-
-    socket.on('viewer-joined', handleViewerJoined);
-    socket.on('answer', handleAnswer);
-    socket.on('ice-candidate', handleIceCandidate);
-
-    return () => {
-        console.log('🛑 [Host] Limpando conexões do host');
-        socket.off('viewer-joined', handleViewerJoined);
-        socket.off('answer', handleAnswer);
-        socket.off('ice-candidate', handleIceCandidate);
-        peerConnections.forEach((pc) => pc.close());
-        peerConnections.clear();
-    };
+    hostInitPromises.set(pin, initPromise);
+    return initPromise;
 };
 
-export const createViewerConnection = (
-    sessionId: string,
+/**
+ * VIEWER: Join a session.
+ */
+export const joinSfuSession = async (
+    _sessionId: string,
+    pin: string,
     onTrack: (stream: MediaStream) => void,
-    onConnectionStateChange?: (state: RTCPeerConnectionState) => void,
-): (() => void) => {
-    if (!window.isSecureContext) {
-        console.warn('⚠️ [Viewer] Contexto NÃO seguro detectado. WebRTC pode ser bloqueado em IPs de LAN pelo navegador (requer HTTPS ou Localhost).');
-    }
+    onDisconnect?: () => void
+): Promise<void> => {
+    if (activeRecvTransports.has(pin)) return;
+    if (joinInitPromises.has(pin)) return joinInitPromises.get(pin);
 
-    const socket: Socket = getSocket();
-    const pc = new RTCPeerConnection(RTC_CONFIG);
-
-    let hostSocketId = '';
-    let remoteDescriptionSet = false;
-    const iceCandidatesBuffer: RTCIceCandidateInit[] = [];
-
-    pc.ontrack = (event) => {
-        console.log('🎥 [Viewer] Recebeu trilha remota:', event.track.kind);
-        if (event.streams && event.streams[0]) {
-            onTrack(event.streams[0]);
-        } else {
-            // Fallback para navegadores que não passam o stream completo
-            const inboundStream = new MediaStream();
-            inboundStream.addTrack(event.track);
-            onTrack(inboundStream);
-        }
-    };
-
-    pc.onicecandidate = (event) => {
-        if (event.candidate && hostSocketId) {
-            console.log('📤 [Viewer] Enviando candidato ICE para o Host');
-            socket.emit('ice-candidate', {
-                sessionId,
-                candidate: event.candidate.toJSON(),
-                targetId: hostSocketId,
-            });
-        }
-    };
-
-    pc.onconnectionstatechange = () => {
-        console.log('🔗 [Viewer] Estado da conexão:', pc.connectionState);
-        onConnectionStateChange?.(pc.connectionState);
-    };
-
-    pc.oniceconnectionstatechange = () => {
-        console.log('🧊 [Viewer] Estado ICE:', pc.iceConnectionState);
-        if (pc.iceConnectionState === 'failed') {
-            onConnectionStateChange?.('failed');
-        }
-    };
-
-    const handleOffer = async (data: {
-        offer: RTCSessionDescriptionInit;
-        sessionId: string;
-        hostSocketId: string;
-    }) => {
-        if (data.sessionId !== sessionId) return;
-        console.log('📥 [Viewer] Oferta recebida do Host:', data.hostSocketId);
-        hostSocketId = data.hostSocketId;
+    const initPromise = (async () => {
+        const socket = getSocket();
+        console.log(`👀 [Viewer] Joining SFU session ${pin}...`);
 
         try {
-            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-            remoteDescriptionSet = true;
+            const { rtpCapabilities, producerIds, error: joinError } = await socket.emitWithAck('join-room', { pin });
+            if (joinError) throw new Error(joinError);
 
-            while (iceCandidatesBuffer.length > 0) {
-                const candidate = iceCandidatesBuffer.shift();
-                if (candidate) {
-                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            await initDevice(rtpCapabilities);
+
+            const { params, error: transportError } = await socket.emitWithAck('create-transport', { pin });
+            if (transportError) throw new Error(transportError);
+
+            const transport = device!.createRecvTransport(params);
+            activeRecvTransports.set(pin, transport);
+
+            transport.on('connect', async ({ dtlsParameters }: { dtlsParameters: any }, callback: () => void, errback: (error: Error) => void) => {
+                try {
+                    await socket.emitWithAck('connect-transport', { pin, transportId: transport.id, dtlsParameters });
+                    callback();
+                } catch (error: any) {
+                    errback(error);
                 }
-            }
-
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-
-            socket.emit('answer', {
-                sessionId,
-                answer: pc.localDescription,
-                viewerId: socket.id,
             });
-            console.log('✅ [Viewer] Resposta enviada ao Host');
-        } catch (error) {
-            console.error('❌ [Viewer] Erro ao processar oferta:', error);
-        }
-    };
 
-    const handleIceCandidate = async (data: {
-        candidate: RTCIceCandidateInit;
-        senderId: string;
-    }) => {
-        if (data.senderId) hostSocketId = data.senderId;
+            transport.on('connectionstatechange', (state) => {
+                console.log(`🔗 [Viewer] Transport state: ${state}`);
+                if (state === 'failed' || state === 'disconnected') {
+                    console.error('❌ [Viewer] SFU connection timeout. Check if UDP 40000-49999 is open on Host Firewall.');
+                    onDisconnect?.();
+                }
+            });
 
-        if (remoteDescriptionSet) {
-            try {
-                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-            } catch (error) {
-                console.error('❌ [Viewer] Erro ao adicionar candidato ICE:', error);
+            console.log('📡 [Viewer] Recv Transport created with ICE candidates:', params.iceCandidates);
+
+            socket.on('new-producer', async (data: { producerId: string }) => {
+                await consumeProducer(pin, transport, data.producerId, onTrack);
+            });
+
+            for (const producerId of producerIds) {
+                await consumeProducer(pin, transport, producerId, onTrack);
             }
-        } else {
-            iceCandidatesBuffer.push(data.candidate);
+
+            socket.on('room-closed', () => onDisconnect?.());
+        } catch (error) {
+            console.error('❌ [Viewer] SFU Join Failed:', error);
+            activeRecvTransports.delete(pin);
+            throw error;
+        } finally {
+            joinInitPromises.delete(pin);
         }
-    };
+    })();
 
-    const handleError = (err: any) => {
-        console.error('❌ [Viewer] Erro de sinalização:', err.message);
-        onConnectionStateChange?.('failed');
-    };
+    joinInitPromises.set(pin, initPromise);
+    return initPromise;
+};
 
-    socket.on('offer', handleOffer);
-    socket.on('ice-candidate', handleIceCandidate);
-    socket.on('error', handleError);
+const consumeProducer = async (
+    pin: string,
+    transport: Transport,
+    producerId: string,
+    onTrack: (stream: MediaStream) => void
+) => {
+    if (consumedProducerIds.has(producerId)) return;
+    consumedProducerIds.add(producerId);
 
-    if (socket.connected) {
-        console.log('🚀 [Viewer] Enviando join-session');
-        socket.emit('join-session', { sessionId });
-    } else {
-        socket.once('connect', () => {
-            console.log('🚀 [Viewer] Conectado! Enviando join-session');
-            socket.emit('join-session', { sessionId });
+    const socket = getSocket();
+    try {
+        const { params, error: consumeError } = await socket.emitWithAck('consume', {
+            pin,
+            transportId: transport.id,
+            producerId,
+            rtpCapabilities: device!.rtpCapabilities,
         });
-    }
 
-    return () => {
-        console.log('🛑 [Viewer] Limpando conexão');
-        socket.off('offer', handleOffer);
-        socket.off('ice-candidate', handleIceCandidate);
-        socket.off('error', handleError);
-        pc.close();
-    };
+        if (consumeError) throw new Error(consumeError);
+
+        const consumer = await transport.consume(params);
+        consumers.set(consumer.id, consumer);
+
+        await socket.emitWithAck('consumer-resume', { pin, consumerId: consumer.id });
+
+        consumer.on('transportclose', () => {
+            consumers.delete(consumer.id);
+            consumedProducerIds.delete(producerId);
+        });
+
+        onTrack(new MediaStream([consumer.track]));
+        console.log('📺 [Viewer] Consuming producer:', producerId);
+    } catch (error) {
+        console.error('❌ [Viewer] Consume Failed:', error);
+        consumedProducerIds.delete(producerId);
+    }
+};
+
+export const cleanupSfu = () => {
+    console.log('🛑 [Mediasoup] Cleanup');
+    const socket = getSocket();
+    socket.off('new-producer');
+    socket.off('room-closed');
+
+    producers.forEach(p => p.close()); producers.clear();
+    consumers.forEach(c => c.close()); consumers.clear();
+    consumedProducerIds.clear();
+
+    activeSendTransports.forEach(t => t.close()); activeSendTransports.clear();
+    activeRecvTransports.forEach(t => t.close()); activeRecvTransports.clear();
+
+    loadDevicePromise = null;
+    // We don't clear InitPromises here so that a racing remount can still wait for the previous one
 };

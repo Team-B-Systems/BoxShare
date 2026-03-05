@@ -29,6 +29,10 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: boxshare_backend
+    ports:
+      - "3000:3000"
+      - "40000-49999:40000-49999/udp"
+      - "40000-49999:40000-49999/tcp"
     networks:
       - boxshare-network
     restart: unless-stopped

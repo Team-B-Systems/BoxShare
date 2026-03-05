@@ -26,7 +26,7 @@ export default function App() {
 
   const startSharing = async () => {
     try {
-      // 1. Capturar o stream (User Gesture)
+      // 1. Capture stream
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
           width: { ideal: 1920 },
@@ -36,7 +36,7 @@ export default function App() {
         audio: false,
       });
 
-      // 2. Registrar a sessão no banco (Apenas UMA vez por clique)
+      // 2. Register session (Backend creates SFU context potential)
       const machineName = `${navigator.userAgent.includes('Mac') ? 'Mac' : 'PC'}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
       const res = await fetch(`${API_URL}/sessions`, {
@@ -56,12 +56,12 @@ export default function App() {
       });
 
     } catch (err: any) {
-      console.log('Screen capture or session creation failed:', err);
+      console.error('Screen capture or session creation failed:', err);
     }
   };
 
-  const joinSession = (sessionId: string) => {
-    setState({ view: 'view', sessionId });
+  const joinSession = (sessionId: string, pin: string) => {
+    setState({ view: 'view', sessionId, pin });
   };
 
   return (
@@ -77,8 +77,12 @@ export default function App() {
           onStop={goHome}
         />
       )}
-      {state.view === 'view' && state.sessionId && (
-        <ViewScreen sessionId={state.sessionId} onLeave={goHome} />
+      {state.view === 'view' && state.sessionId && state.pin && (
+        <ViewScreen
+          sessionId={state.sessionId}
+          pin={state.pin}
+          onLeave={goHome}
+        />
       )}
     </div>
   );
