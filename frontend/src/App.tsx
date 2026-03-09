@@ -45,7 +45,7 @@ export default function App() {
         body: JSON.stringify({ machineName }),
       });
 
-      if (!res.ok) throw new Error('Failed to create session');
+      if (!res.ok) throw new Error('Falha ao criar sessão');
       const data = await res.json();
 
       streamRef.current = stream;

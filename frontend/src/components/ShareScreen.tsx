@@ -66,7 +66,7 @@ export default function ShareScreen({
                 setStatus('sharing');
             } catch (err: any) {
                 console.error('Error setting up Mediasoup SFU:', err);
-                setErrorMsg(err.message || 'Failed to initialize SFU connection');
+                setErrorMsg(err.message || 'Falha ao inicializar a conexão SFU');
                 setStatus('error');
             }
         };
@@ -118,7 +118,7 @@ export default function ShareScreen({
                         </svg>
                     </div>
                     <h2 className="text-text-primary text-lg font-medium mb-2">
-                        Unable to Share
+                        Não foi possível compartilhar
                     </h2>
                     <p className="text-text-muted text-sm mb-6">{errorMsg}</p>
                     <button
@@ -130,7 +130,7 @@ export default function ShareScreen({
               cursor-pointer
             "
                     >
-                        Go Back
+                        Voltar
                     </button>
                 </div>
             </div>
@@ -145,7 +145,7 @@ export default function ShareScreen({
                     <div className="flex items-center gap-3">
                         <div className="w-2 h-2 rounded-full bg-success animate-pulse-subtle" />
                         <span className="text-text-primary text-sm font-medium">
-                            SFU Sharing Active
+                            Compartilhamento SFU Ativo
                         </span>
                         <span className="text-text-muted text-xs">·</span>
                         <span className="text-text-muted text-xs">{machineName}</span>
@@ -162,7 +162,7 @@ export default function ShareScreen({
               cursor-pointer
             "
                     >
-                        Stop Sharing
+                        Parar Compartilhamento
                     </button>
                 </div>
             </header>
@@ -172,7 +172,7 @@ export default function ShareScreen({
                 {/* PIN Display */}
                 <div className="text-center mb-8 animate-fade-in">
                     <p className="text-text-muted text-xs uppercase tracking-widest mb-3">
-                        Share this PIN with viewers
+                        Partilhe este PIN com os visualizadores
                     </p>
                     <div className="inline-flex items-center gap-1">
                         {(pin || '------').split('').map((digit, i) => (
@@ -191,7 +191,7 @@ export default function ShareScreen({
                         ))}
                     </div>
                     <p className="text-text-muted text-xs mt-3">
-                        {viewerCount} viewer{viewerCount !== 1 ? 's' : ''} connected (SFU)
+                        {viewerCount} espectador{viewerCount !== 1 ? 'es' : ''} conectado{viewerCount !== 1 ? 's' : ''} (SFU)
                     </p>
                 </div>
 
@@ -200,7 +200,7 @@ export default function ShareScreen({
                     <div className="absolute top-3 left-3 z-10 flex items-center gap-2 bg-surface/80 backdrop-blur-sm rounded-md px-2.5 py-1 border border-border">
                         <div className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse-subtle" />
                         <span className="text-[10px] text-text-muted uppercase tracking-wider">
-                            Live Preview (SFU)
+                            Visualização em Tempo Real (SFU)
                         </span>
                     </div>
                     <video

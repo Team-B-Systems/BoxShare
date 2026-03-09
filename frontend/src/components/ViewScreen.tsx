@@ -70,10 +70,10 @@ export default function ViewScreen({ sessionId, pin, onLeave }: ViewScreenProps)
                         />
                         <span className="text-text-secondary text-sm">
                             {connectionState === 'connected'
-                                ? 'Viewing (SFU)'
+                                ? 'Visualizando (SFU)'
                                 : connectionState === 'connecting'
-                                    ? 'Connecting to SFU...'
-                                    : 'Disconnected'}
+                                    ? 'Conectando ao SFU...'
+                                    : 'Desconectado'}
                         </span>
                     </div>
                     <button
@@ -88,7 +88,7 @@ export default function ViewScreen({ sessionId, pin, onLeave }: ViewScreenProps)
               cursor-pointer
             "
                     >
-                        Leave
+                        Sair
                     </button>
                 </div>
             </header>
@@ -100,7 +100,7 @@ export default function ViewScreen({ sessionId, pin, onLeave }: ViewScreenProps)
                         <div className="text-center">
                             <div className="w-10 h-10 border-2 border-border border-t-text-secondary rounded-full animate-spin mx-auto mb-4" />
                             <p className="text-text-muted text-sm">
-                                Joining SFU session...
+                                Entrando na sessão SFU...
                             </p>
                         </div>
                     </div>
@@ -125,7 +125,7 @@ export default function ViewScreen({ sessionId, pin, onLeave }: ViewScreenProps)
                                 </svg>
                             </div>
                             <p className="text-text-secondary text-sm mb-1">
-                                SFU Connection Lost
+                                Conexão SFU Perdida
                             </p>
                             <button
                                 onClick={handleLeave}
@@ -136,7 +136,7 @@ export default function ViewScreen({ sessionId, pin, onLeave }: ViewScreenProps)
                   cursor-pointer
                 "
                             >
-                                Back to Home
+                                Voltar ao Início
                             </button>
                         </div>
                     </div>

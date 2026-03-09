@@ -26,7 +26,7 @@ export default function Home({ onStartSharing, onJoinSession }: HomeProps) {
     const fetchSessions = useCallback(async () => {
         try {
             const res = await fetch(`${API_URL}/sessions`);
-            if (!res.ok) throw new Error('Failed to fetch sessions');
+            if (!res.ok) throw new Error('Falha ao procurar sessões');
             const data = await res.json();
             setSessions(data);
         } catch (err) {
@@ -54,7 +54,7 @@ export default function Home({ onStartSharing, onJoinSession }: HomeProps) {
         if (!session) return;
 
         const enteredPin = window.prompt(
-            `Enter the 6-digit PIN for "${session.machineName}":`,
+            `Insira o PIN de 6 dígitos para "${session.machineName}":`,
         );
         if (!enteredPin) return;
 
@@ -65,7 +65,7 @@ export default function Home({ onStartSharing, onJoinSession }: HomeProps) {
             body: JSON.stringify({ pin: enteredPin }),
         })
             .then((res) => {
-                if (!res.ok) throw new Error('Invalid PIN');
+                if (!res.ok) throw new Error('PIN inválido');
                 return res.json();
             })
             .then((data) => {
@@ -73,7 +73,7 @@ export default function Home({ onStartSharing, onJoinSession }: HomeProps) {
                 onJoinSession(sessionId, data.pin || enteredPin);
             })
             .catch(() => {
-                alert('Invalid PIN. Please try again.');
+                alert('PIN inválido. Por favor, tente novamente.');
             });
     };
 
@@ -89,24 +89,24 @@ export default function Home({ onStartSharing, onJoinSession }: HomeProps) {
                         </div>
                         <div>
                             <h1 className="text-lg font-semibold text-text-primary tracking-tight">BoxShare SFU</h1>
-                            <p className="text-xs text-text-muted">High-Performance LAN Sharing</p>
+                            <p className="text-xs text-text-muted">Compartilhamento LAN de Alta Performance</p>
                         </div>
                     </div>
                     <button id="start-sharing-btn" onClick={onStartSharing} className="px-5 py-2.5 rounded-lg text-sm font-medium bg-text-primary text-surface hover:bg-accent-hover active:scale-95 cursor-pointer">
-                        Start Sharing
+                        Começar a Compartilhar
                     </button>
                 </div>
             </header>
             <main className="flex-1 max-w-4xl mx-auto w-full px-6 py-8">
                 <div className="flex items-center justify-between mb-6">
                     <div>
-                        <h2 className="text-sm font-medium text-text-secondary uppercase tracking-wider">Active Sessions</h2>
-                        <p className="text-xs text-text-muted mt-1">{sessions.length === 0 ? 'No active sessions' : `${sessions.length} sessions available`}</p>
+                        <h2 className="text-sm font-medium text-text-secondary uppercase tracking-wider">Sessões Ativas</h2>
+                        <p className="text-xs text-text-muted mt-1">{sessions.length === 0 ? 'Nenhuma sessão ativa' : `${sessions.length} sessões disponíveis`}</p>
                     </div>
                 </div>
                 {!loading && sessions.length === 0 && (
                     <div className="border border-border border-dashed rounded-xl p-12 text-center animate-fade-in">
-                        <p className="text-text-secondary text-sm">No one is sharing yet (SFU)</p>
+                        <p className="text-text-secondary text-sm">Ainda ninguém está a compartilhar (SFU)</p>
                     </div>
                 )}
                 {sessions.length > 0 && (

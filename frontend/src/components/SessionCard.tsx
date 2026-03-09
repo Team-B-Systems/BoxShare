@@ -69,7 +69,7 @@ export default function SessionCard({
                             />
                         </svg>
                         <span>
-                            {viewerCount} viewer{viewerCount !== 1 ? 's' : ''}
+                            {viewerCount} espectador{viewerCount !== 1 ? 'es' : ''}
                         </span>
                     </div>
                 </div>
@@ -89,7 +89,7 @@ export default function SessionCard({
             whitespace-nowrap
           "
                 >
-                    Join
+                    Entrar
                 </button>
             </div>
         </div>
