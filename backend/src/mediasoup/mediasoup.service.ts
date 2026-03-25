@@ -51,7 +51,10 @@ export class MediasoupService implements OnModuleInit {
 
     async onModuleInit(): Promise<void> {
         this.logger.log('🚀 Creating mediasoup Worker...');
-        this.lanIp = process.env.ANNOUNCED_IP || this.getInternalIp();
+
+        // Get all possible LAN IPs to announce to clients
+        const publicIps = this.getAllInternalIps();
+        this.logger.log(`🔍 [IP DETECTION] Found ${publicIps.length} non-internal IPs: ${publicIps.join(', ')}`);
 
         this.worker = await mediasoup.createWorker({
             logLevel: 'warn',
@@ -59,24 +62,37 @@ export class MediasoupService implements OnModuleInit {
         });
 
         // Create WebRtcServer to listen on a SINGLE port
-        this.webRtcServer = await this.worker.createWebRtcServer({
-            listenInfos: [
+        // We announce ALL detected IPs so clients on any sub-network can connect
+        const listenInfos: any[] = [];
+        for (const ip of publicIps) {
+            listenInfos.push(
                 {
                     protocol: 'udp',
-                    ip: '0.0.0.0',
-                    announcedIp: this.lanIp,
+                    ip: ip, // Bind to specific interface IP
+                    announcedIp: ip,
                     port: this.WEBRTC_PORT,
                 },
                 {
                     protocol: 'tcp',
-                    ip: '0.0.0.0',
-                    announcedIp: this.lanIp,
+                    ip: ip, // Bind to specific interface IP
+                    announcedIp: ip,
                     port: this.WEBRTC_PORT,
                 }
-            ]
-        });
+            );
+        }
 
-        this.logger.log(`✅ mediasoup WebRtcServer created on port ${this.WEBRTC_PORT} (Announced IP: ${this.lanIp})`);
+        // Always add loopback in case someone uses it
+        if (!publicIps.includes('127.0.0.1')) {
+            listenInfos.push(
+                { protocol: 'udp', ip: '127.0.0.1', announcedIp: '127.0.0.1', port: this.WEBRTC_PORT },
+                { protocol: 'tcp', ip: '127.0.0.1', announcedIp: '127.0.0.1', port: this.WEBRTC_PORT }
+            );
+        }
+
+        this.webRtcServer = await this.worker.createWebRtcServer({ listenInfos });
+
+        this.logger.log(`✅ [Mediasoup] WebRtcServer created on port ${this.WEBRTC_PORT}`);
+        this.logger.log(`📡 [Listen Config] Listening on ${listenInfos.length} entries for specific interface IPs.`);
 
         this.worker.on('died', (error) => {
             this.logger.error(`💀 mediasoup Worker died! Error: ${error?.message}`);
@@ -84,16 +100,23 @@ export class MediasoupService implements OnModuleInit {
         });
     }
 
-    private getInternalIp(): string {
+    private getAllInternalIps(): string[] {
         const interfaces = os.networkInterfaces();
+        const ips: string[] = [];
+
+        // Priority IPs if set via ENV
+        if (process.env.ANNOUNCED_IP) {
+            return [process.env.ANNOUNCED_IP];
+        }
+
         for (const name of Object.keys(interfaces)) {
             for (const iface of interfaces[name]!) {
                 if (iface.family === 'IPv4' && !iface.internal) {
-                    return iface.address;
+                    ips.push(iface.address);
                 }
             }
         }
-        return '127.0.0.1';
+        return ips.length > 0 ? ips : ['127.0.0.1'];
     }
 
     async createRouter(): Promise<Router> {
@@ -119,6 +142,9 @@ export class MediasoupService implements OnModuleInit {
             iceCandidates: transport.iceCandidates,
             dtlsParameters: transport.dtlsParameters,
         };
+
+        this.logger.log(`📡 [WebRtcTransport] Transport created. ID: ${transport.id}`);
+        this.logger.log(`   🔸 Candidates: ${params.iceCandidates.map((c: any) => `${c.ip}:${c.port} (${c.protocol})`).join(', ')}`);
 
         return { transport, params };
     }
