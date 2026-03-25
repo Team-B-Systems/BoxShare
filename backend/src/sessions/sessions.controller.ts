@@ -7,7 +7,7 @@ import {
     HttpException,
     HttpStatus,
 } from '@nestjs/common';
-import { SessionsService } from './sessions.service.js';
+import { SessionsService } from './sessions.service';
 
 /**
  * REST controller for managing screen-sharing sessions.
