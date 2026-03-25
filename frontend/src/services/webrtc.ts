@@ -71,12 +71,12 @@ export const startSfuHost = async (
         console.log(`🚀 [Host] Initiating SFU for PIN ${pin}...`);
 
         try {
-            const { rtpCapabilities, error: createError } = await socket.emitWithAck('create-room', { pin });
+            const { rtpCapabilities, error: createError } = await socket.timeout(10000).emitWithAck('create-room', { pin });
             if (createError) throw new Error(createError);
 
             await initDevice(rtpCapabilities);
 
-            const { params, error: transportError } = await socket.emitWithAck('create-transport', { pin });
+            const { params, error: transportError } = await socket.timeout(10000).emitWithAck('create-transport', { pin });
             if (transportError) throw new Error(transportError);
 
             const transport = device!.createSendTransport(params);
@@ -84,7 +84,7 @@ export const startSfuHost = async (
 
             transport.on('connect', async ({ dtlsParameters }: { dtlsParameters: any }, callback: () => void, errback: (error: Error) => void) => {
                 try {
-                    await socket.emitWithAck('connect-transport', { pin, transportId: transport.id, dtlsParameters });
+                    await socket.timeout(10000).emitWithAck('connect-transport', { pin, transportId: transport.id, dtlsParameters });
                     callback();
                 } catch (error: any) {
                     errback(error);
@@ -93,7 +93,7 @@ export const startSfuHost = async (
 
             transport.on('produce', async ({ kind, rtpParameters }: { kind: any, rtpParameters: any }, callback: ({ id }: { id: string }) => void, errback: (error: Error) => void) => {
                 try {
-                    const { producerId, error: produceError } = await socket.emitWithAck('produce', {
+                    const { producerId, error: produceError } = await socket.timeout(10000).emitWithAck('produce', {
                         pin,
                         transportId: transport.id,
                         kind,
@@ -109,7 +109,7 @@ export const startSfuHost = async (
             transport.on('connectionstatechange', (state) => {
                 console.log(`🔗 [Host] Transport state: ${state}`);
                 if (state === 'failed' || state === 'disconnected') {
-                    console.error('❌ [Host] ICE Connection failed. This usually means UDP ports are blocked or IP is unreachable.');
+                    console.error('❌ [Host] ICE Connection failed. This usually means port 4443 (UDP/TCP) is blocked or IP is unreachable.');
                     onDisconnect?.();
                 }
             });
@@ -151,12 +151,12 @@ export const joinSfuSession = async (
         console.log(`👀 [Viewer] Joining SFU session ${pin}...`);
 
         try {
-            const { rtpCapabilities, producerIds, error: joinError } = await socket.emitWithAck('join-room', { pin });
+            const { rtpCapabilities, producerIds, error: joinError } = await socket.timeout(10000).emitWithAck('join-room', { pin });
             if (joinError) throw new Error(joinError);
 
             await initDevice(rtpCapabilities);
 
-            const { params, error: transportError } = await socket.emitWithAck('create-transport', { pin });
+            const { params, error: transportError } = await socket.timeout(10000).emitWithAck('create-transport', { pin });
             if (transportError) throw new Error(transportError);
 
             const transport = device!.createRecvTransport(params);
@@ -164,7 +164,7 @@ export const joinSfuSession = async (
 
             transport.on('connect', async ({ dtlsParameters }: { dtlsParameters: any }, callback: () => void, errback: (error: Error) => void) => {
                 try {
-                    await socket.emitWithAck('connect-transport', { pin, transportId: transport.id, dtlsParameters });
+                    await socket.timeout(10000).emitWithAck('connect-transport', { pin, transportId: transport.id, dtlsParameters });
                     callback();
                 } catch (error: any) {
                     errback(error);
@@ -174,7 +174,7 @@ export const joinSfuSession = async (
             transport.on('connectionstatechange', (state) => {
                 console.log(`🔗 [Viewer] Transport state: ${state}`);
                 if (state === 'failed' || state === 'disconnected') {
-                    console.error('❌ [Viewer] SFU connection timeout. Check if UDP 40000-49999 is open on Host Firewall.');
+                    console.error('❌ [Viewer] SFU connection timeout. Check if port 4443 (UDP/TCP) is open on Host Firewall.');
                     onDisconnect?.();
                 }
             });
@@ -214,7 +214,7 @@ const consumeProducer = async (
 
     const socket = getSocket();
     try {
-        const { params, error: consumeError } = await socket.emitWithAck('consume', {
+        const { params, error: consumeError } = await socket.timeout(10000).emitWithAck('consume', {
             pin,
             transportId: transport.id,
             producerId,
@@ -226,7 +226,7 @@ const consumeProducer = async (
         const consumer = await transport.consume(params);
         consumers.set(consumer.id, consumer);
 
-        await socket.emitWithAck('consumer-resume', { pin, consumerId: consumer.id });
+        await socket.timeout(10000).emitWithAck('consumer-resume', { pin, consumerId: consumer.id });
 
         consumer.on('transportclose', () => {
             consumers.delete(consumer.id);
