@@ -35,10 +35,10 @@ let socket: Socket | null = null;
 export const getSocket = (): Socket => {
     if (!socket) {
         socket = io(API_URL, {
-            transports: ['websocket'], // Use WebSocket primarily
+            transports: ['polling', 'websocket'], // Allow fallback to polling for better LAN/cert support
             autoConnect: true,
             secure: true,
-            rejectUnauthorized: false, // Allow self-signed certs in browser (user must accept warning)
+            rejectUnauthorized: false,
         });
 
         socket.on('connect', () => {
