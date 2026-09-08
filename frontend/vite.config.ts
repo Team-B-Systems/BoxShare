@@ -17,7 +17,7 @@ export default defineConfig({
   server: {
     // Force IPv4 for better compatibility with Windows/WSL mirrored mode
     host: '0.0.0.0',
-    port: 5173,
+    port: 5175,
     open: true,
     ...(httpsOptions && { https: httpsOptions }),
   },
